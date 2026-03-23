@@ -1,0 +1,32 @@
+# Python
+venv/
+backend/venv/
+__pycache__/
+backend/__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Node
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+build/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and IDEs
+.env*
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+backend/classes.npy
+backend/submission.csv
+backend/model/
