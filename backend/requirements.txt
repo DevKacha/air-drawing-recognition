@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
-tensorflow-cpu
+tensorflow==2.15.0
 opencv-python-headless
 numpy
 python-multipart
 pydantic
+mediapipe
+gunicorn
