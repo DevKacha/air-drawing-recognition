@@ -1,11 +1,7 @@
 fastapi
-uvicorn
-tensorflow
-opencv-python
+uvicorn[standard]
+tensorflow-cpu
+opencv-python-headless
 numpy
-scikit-learn
 python-multipart
-cors
 pydantic
-pandas
-openpyxl
