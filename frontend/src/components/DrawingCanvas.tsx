@@ -6,7 +6,7 @@ import type { Results } from '@mediapipe/hands';
 declare global {
   interface Window {
     Hands: any;
-    Camera: any;
+    Camera: any;    
   }
 }
 

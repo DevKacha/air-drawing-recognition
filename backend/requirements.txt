@@ -4,5 +4,5 @@ numpy==1.26.4
 opencv-python-headless
 mediapipe
 gunicorn
-tensorflow==2.18.0
+tensorflow-cpu
 python-multipart
