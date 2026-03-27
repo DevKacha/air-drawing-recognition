@@ -6,7 +6,7 @@ import type { Results } from '@mediapipe/hands';
 declare global {
   interface Window {
     Hands: any;
-    Camera: any;    
+    Camera: any;
   }
 }
 
@@ -15,14 +15,15 @@ interface PredictionData {
   confidence: number;
 }
 
-interface SegmentResult {
+interface SegmentResult { 
   predictions: string[];
 }
 
 export default function DrawingCanvas() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRefView = useRef<HTMLCanvasElement>(null); // To see the drawing mirrored
-  const canvasRefClean = useRef<HTMLCanvasElement>(null); // To send for prediction (white on black)
+  const canvasRefView = useRef<HTMLCanvasElement>(null);
+  const canvasRefPointer = useRef<HTMLCanvasElement>(null);
+  const canvasRefClean = useRef<HTMLCanvasElement>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -33,9 +34,11 @@ export default function DrawingCanvas() {
 
   const currentPath = useRef<{ xValueScreen: number, xValueModel: number, yValue: number }[]>([]);
   const stopTimeout = useRef<NodeJS.Timeout | null>(null);
+  const totalDrawnFrames = useRef<number>(0);
   const mediaPipeRefs = useRef<{ handsModel: any, camera: any }>({ handsModel: null, camera: null });
 
   const clearCanvases = useCallback(() => {
+    totalDrawnFrames.current = 0;
     if (canvasRefView.current) {
       const ctx = canvasRefView.current.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, canvasRefView.current.width, canvasRefView.current.height);
@@ -43,10 +46,8 @@ export default function DrawingCanvas() {
     if (canvasRefClean.current) {
       const ctx = canvasRefClean.current.getContext('2d');
       if (ctx) {
-        // Fill black so next export is opaque, not transparent
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvasRefClean.current.width, canvasRefClean.current.height);
-        // Then clear back to transparent for fresh drawing
         ctx.clearRect(0, 0, canvasRefClean.current.width, canvasRefClean.current.height);
       }
     }
@@ -73,7 +74,6 @@ export default function DrawingCanvas() {
 
     const canvas = canvasRefClean.current;
 
-    // Check if anything is actually on the canvas
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -116,7 +116,6 @@ export default function DrawingCanvas() {
         setPredictions([]);
       } finally {
         setIsProcessing(false);
-        // Clear both canvases for the next segment
         clearCanvases();
       }
     });
@@ -127,77 +126,154 @@ export default function DrawingCanvas() {
 
     const canvasV = canvasRefView.current;
     const canvasC = canvasRefClean.current;
+    const canvasP = canvasRefPointer.current;
     const ctxV = canvasV.getContext('2d');
     const ctxC = canvasC.getContext('2d');
+    const ctxP = canvasP?.getContext('2d');
     if (!ctxV || !ctxC) return;
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       const landmarks = results.multiHandLandmarks[0];
       const indexFinger = landmarks[8];
 
-      // More robust palm open detection: thumb-pinky distance vs index-palm distance
-      const thumbTip = landmarks[4];
-      const pinkyTip = landmarks[20];
-      const distTP = Math.sqrt(Math.pow(thumbTip.x - pinkyTip.x, 2) + Math.pow(thumbTip.y - pinkyTip.y, 2));
-      const palmOpen = distTP > 0.15; // roughly empirical
+      const fingerTips = [8, 12, 16, 20];
+      const fingerPIPs = [6, 10, 14, 18];
+      const extendedCount = fingerTips.filter(
+        (tip, i) => landmarks[tip].y < landmarks[fingerPIPs[i]].y
+      ).length;
+      
+      const palmOpen = extendedCount >= 3;
+      const isTwoFingers = extendedCount === 2;
+      const isOneFinger = extendedCount <= 1;
 
       const xView = indexFinger.x * canvasV.width;
-      const xModel = (1 - indexFinger.x) * canvasC.width; // Flip horizontally for prediction
+      const xModel = (1 - indexFinger.x) * canvasC.width;
       const y = indexFinger.y * canvasV.height;
 
-      setIsDrawing(true);
-      const strokeWidth = 20; // Increased from 14 for better model recognition
+      const palmCenter = landmarks[9];
+      const eraserXView = palmCenter.x * canvasV.width;
+      const eraserXModel = (1 - palmCenter.x) * canvasC.width;
+      const eraserY = palmCenter.y * canvasV.height;
+      const eraserRadius = 60;
 
-      if (currentPath.current.length > 0) {
-        const prevItem = currentPath.current[currentPath.current.length - 1];
-        const prevXView = prevItem.xValueScreen;
-        const prevXModel = prevItem.xValueModel;
-        const prevY = prevItem.yValue;
-
-        // Draw on view canvas (colored/stylized) - this is mirrored via CSS
-        ctxV.beginPath();
-        ctxV.moveTo(prevXView, prevY);
-        ctxV.lineTo(xView, y);
-        ctxV.strokeStyle = '#3b82f6';
-        ctxV.lineWidth = strokeWidth;
-        ctxV.lineCap = 'round';
-        ctxV.shadowBlur = 10;
-        ctxV.shadowColor = '#3b82f6';
-        ctxV.stroke();
-
-        // Draw on clean prediction canvas (black bg, white strokes for model)
-        // Fill black background on first stroke point so PNG is not transparent
-        if (currentPath.current.length === 1) {
-          ctxC.fillStyle = 'black';
-          ctxC.fillRect(0, 0, canvasC.width, canvasC.height);
+      if (ctxP && canvasP) {
+        ctxP.clearRect(0, 0, canvasP.width, canvasP.height);
+        if (palmOpen) {
+          ctxP.beginPath();
+          ctxP.arc(eraserXView, eraserY, eraserRadius, 0, 2 * Math.PI);
+          ctxP.fillStyle = 'rgba(239, 68, 68, 0.4)';
+          ctxP.fill();
+          ctxP.lineWidth = 2;
+          ctxP.strokeStyle = '#ef4444';
+          ctxP.stroke();
+        } else if (isOneFinger || isTwoFingers) {
+          ctxP.beginPath();
+          ctxP.arc(xView, y, 10, 0, 2 * Math.PI);
+          ctxP.fillStyle = isTwoFingers ? 'rgba(16, 185, 129, 0.8)' : 'rgba(59, 130, 246, 0.8)';
+          ctxP.fill();
+          ctxP.lineWidth = 2;
+          ctxP.strokeStyle = '#ffffff';
+          ctxP.stroke();
         }
-        ctxC.beginPath();
-        ctxC.moveTo(prevXModel, prevY);
-        ctxC.lineTo(xModel, y);
-        ctxC.strokeStyle = 'white';
-        ctxC.lineWidth = strokeWidth;
-        ctxC.lineCap = 'round';
-        ctxC.shadowBlur = 0;
-        ctxC.stroke();
       }
 
-      currentPath.current.push({
-        xValueScreen: xView,
-        xValueModel: xModel,
-        yValue: y
-      });
+      if (palmOpen) {
+        setIsDrawing(false);
+        currentPath.current = [];
 
+        ctxV.globalCompositeOperation = 'destination-out';
+        ctxV.beginPath();
+        ctxV.arc(eraserXView, eraserY, eraserRadius, 0, 2 * Math.PI);
+        ctxV.fill();
+        ctxV.globalCompositeOperation = 'source-over';
+
+        if (totalDrawnFrames.current > 0) {
+           ctxC.beginPath();
+           ctxC.arc(eraserXModel, eraserY, eraserRadius, 0, 2 * Math.PI);
+           ctxC.fillStyle = 'black';
+           ctxC.fill();
+        }
+
+        if (stopTimeout.current) clearTimeout(stopTimeout.current);
+        stopTimeout.current = setTimeout(() => {
+          if (totalDrawnFrames.current > 5) {
+            predictDrawingSegment();
+          }
+        }, 3000);
+
+      } else if (isTwoFingers) {
+        setIsDrawing(true);
+        const strokeWidth = 20;
+
+        if (currentPath.current.length > 0) {
+          const prevItem = currentPath.current[currentPath.current.length - 1];
+          const prevXView = prevItem.xValueScreen;
+          const prevXModel = prevItem.xValueModel;
+          const prevY = prevItem.yValue;
+
+          ctxV.beginPath();
+          ctxV.moveTo(prevXView, prevY);
+          ctxV.lineTo(xView, y);
+          ctxV.strokeStyle = '#3b82f6';
+          ctxV.lineWidth = strokeWidth;
+          ctxV.lineCap = 'round';
+          ctxV.shadowBlur = 10;
+          ctxV.shadowColor = '#3b82f6';
+          ctxV.stroke();
+
+          if (totalDrawnFrames.current === 0) {
+            ctxC.fillStyle = 'black';
+            ctxC.fillRect(0, 0, canvasC.width, canvasC.height);
+          }
+          ctxC.beginPath();
+          ctxC.moveTo(prevXModel, prevY);
+          ctxC.lineTo(xModel, y);
+          ctxC.strokeStyle = 'white';
+          ctxC.lineWidth = strokeWidth;
+          ctxC.lineCap = 'round';
+          ctxC.shadowBlur = 0;
+          ctxC.stroke();
+        }
+
+        currentPath.current.push({
+          xValueScreen: xView,
+          xValueModel: xModel,
+          yValue: y
+        });
+        
+        totalDrawnFrames.current += 1;
+
+        if (stopTimeout.current) clearTimeout(stopTimeout.current);
+        stopTimeout.current = setTimeout(() => {
+          setIsDrawing(false);
+          if (totalDrawnFrames.current > 5) {
+            predictDrawingSegment();
+          }
+          currentPath.current = [];
+        }, 3000);
+      } else {
+        setIsDrawing(false);
+        currentPath.current = [];
+
+        if (stopTimeout.current) clearTimeout(stopTimeout.current);
+        stopTimeout.current = setTimeout(() => {
+          if (totalDrawnFrames.current > 5) {
+            predictDrawingSegment();
+          }
+        }, 3000);
+      }
+    } else {
+      if (ctxP && canvasP) {
+        ctxP.clearRect(0, 0, canvasP.width, canvasP.height);
+      }
       if (stopTimeout.current) clearTimeout(stopTimeout.current);
-
-      // Stop detection: no movement for 1.5s or open palm
-      const timeoutVal = palmOpen ? 500 : 1500;
       stopTimeout.current = setTimeout(() => {
         setIsDrawing(false);
-        if (currentPath.current.length > 5) {
+        if (totalDrawnFrames.current > 5) {
           predictDrawingSegment();
         }
         currentPath.current = [];
-      }, timeoutVal);
+      }, 3000);
     }
   }, [clearCanvases, predictDrawingSegment]);
 
@@ -214,8 +290,8 @@ export default function DrawingCanvas() {
       handsModel.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
       });
       handsModel.onResults(onResults);
       mediaPipeRefs.current.handsModel = handsModel;
@@ -240,7 +316,6 @@ export default function DrawingCanvas() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#050505] text-white overflow-hidden">
-      {/* Header bar */}
       <header className="h-16 px-8 flex items-center justify-between border-b border-gray-900 bg-black/50 backdrop-blur-md z-30">
         <div className="flex items-center gap-4">
           <div className="w-8 h-8 rounded-full bg-blue-500 animate-pulse ring-4 ring-blue-500/20" />
@@ -263,9 +338,7 @@ export default function DrawingCanvas() {
         </div>
       </header>
 
-      {/* Main split view */}
       <main className="flex-1 flex w-full relative">
-        {/* Left: Clean Canvas view */}
         <section className="flex-1 border-r border-gray-900 relative flex flex-col group">
           <div className="absolute top-4 left-6 z-20 pointer-events-none">
             <span className="px-3 py-1 rounded bg-black/40 border border-white/5 text-[10px] uppercase tracking-tighter text-gray-400">Virtual Output</span>
@@ -276,6 +349,12 @@ export default function DrawingCanvas() {
               width={640}
               height={480}
               className="relative z-10 w-full max-w-2xl h-auto aspect-[4/3] transform -scale-x-100"
+            />
+            <canvas
+              ref={canvasRefPointer}
+              width={640}
+              height={480}
+              className="absolute z-20 w-full max-w-2xl h-auto aspect-[4/3] transform -scale-x-100 pointer-events-none"
             />
             <canvas ref={canvasRefClean} width={640} height={480} className="hidden" />
           </div>
@@ -289,7 +368,6 @@ export default function DrawingCanvas() {
           </div>
         </section>
 
-        {/* Right: Camera view */}
         <section className="flex-1 relative flex flex-col">
           <div className="absolute top-4 right-6 z-20 pointer-events-none">
             <span className="px-3 py-1 rounded bg-blue-500/20 border border-blue-500/30 text-[10px] uppercase tracking-tighter text-blue-400">Tracking Engine</span>
@@ -324,7 +402,6 @@ export default function DrawingCanvas() {
         </section>
       </main>
 
-      {/* Floating Result Panel */}
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col gap-3 min-w-[300px] z-40">
         {isError && (
           <div className="bg-red-950/90 text-red-300 border border-red-600 p-4 rounded-2xl text-sm font-semibold">
