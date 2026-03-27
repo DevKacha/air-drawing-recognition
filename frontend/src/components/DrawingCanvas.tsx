@@ -199,7 +199,7 @@ export default function DrawingCanvas() {
           if (totalDrawnFrames.current > 5) {
             predictDrawingSegment();
           }
-        }, 3000);
+        }, 2000);
 
       } else if (isTwoFingers) {
         setIsDrawing(true);
@@ -250,30 +250,21 @@ export default function DrawingCanvas() {
             predictDrawingSegment();
           }
           currentPath.current = [];
-        }, 3000);
+        }, 2000);
       } else {
+        // One finger (hovering) or fist - we don't clear the timeout!
+        // Just let the previous timeout from drawing/erasing run down.
         setIsDrawing(false);
         currentPath.current = [];
-
-        if (stopTimeout.current) clearTimeout(stopTimeout.current);
-        stopTimeout.current = setTimeout(() => {
-          if (totalDrawnFrames.current > 5) {
-            predictDrawingSegment();
-          }
-        }, 3000);
       }
     } else {
+      // No hands detected
       if (ctxP && canvasP) {
         ctxP.clearRect(0, 0, canvasP.width, canvasP.height);
       }
-      if (stopTimeout.current) clearTimeout(stopTimeout.current);
-      stopTimeout.current = setTimeout(() => {
-        setIsDrawing(false);
-        if (totalDrawnFrames.current > 5) {
-          predictDrawingSegment();
-        }
-        currentPath.current = [];
-      }, 3000);
+      setIsDrawing(false);
+      currentPath.current = [];
+      // Don't reset timeout here so predicting can finish if hand disappears
     }
   }, [clearCanvases, predictDrawingSegment]);
 
