@@ -6,7 +6,6 @@ import io
 import os
 
 def test_mnist_prediction():
-    # Load a few samples from test.csv
     test_csv = 'd:/DL_Project/test.csv'
     if not os.path.exists(test_csv):
         print("test.csv not found")
@@ -21,16 +20,11 @@ def test_mnist_prediction():
     
     for i in range(len(images_28)):
         img = images_28[i]
-        # Resize to 640x640 just to simulate air drawing canvas size if needed,
-        # but the backend will resize it to 64x64 anyway.
-        # Let's send it as is or slightly larger to see flexibility.
         img_large = cv2.resize(img, (200, 200), interpolation=cv2.INTER_CUBIC)
         
-        # Encode as PNG
         _, buffer = cv2.imencode(".png", img_large)
         io_buf = io.BytesIO(buffer)
         
-        # Send to backend
         print(f"Sending Sample {i+1} to {url}...")
         files = {"file": (f"sample_{i}.png", io_buf, "image/png")}
         

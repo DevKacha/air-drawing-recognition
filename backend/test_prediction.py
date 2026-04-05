@@ -6,7 +6,6 @@ import io
 import os
 
 def test_predict_csv_sample():
-    # Path to the test dataset
     test_csv = 'd:/DL_Project/test.csv'
     
     if not os.path.exists(test_csv):
@@ -15,22 +14,18 @@ def test_predict_csv_sample():
 
     print(f"Loading sample digit from {test_csv}...")
     try:
-        # Load the first row of test.csv
         df = pd.read_csv(test_csv, nrows=1)
         pixel_data = df.values.reshape(28, 28).astype(np.uint8)
         
-        # Resize to 64x64 or 200x200 (backend handles resizing)
         img_input = cv2.resize(pixel_data, (200, 200), interpolation=cv2.INTER_CUBIC)
         
-        # Encode as PNG to send as file
         success, buffer = cv2.imencode(".png", img_input)
         if not success:
             print("Failed to encode image")
             return
             
         io_buf = io.BytesIO(buffer)
-        
-        # Send to backend
+         
         url = "http://localhost:8000/predict"
         files = {"file": ("test_digit.png", io_buf, "image/png")}
         

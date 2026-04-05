@@ -83,7 +83,8 @@ export default function DrawingCanvas() {
       formData.append('file', blob, 'segment.png');
 
       try {
-        const res = await fetch('http://127.0.0.1:8000/predict', {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        const res = await fetch(`${apiUrl}/predict`, {
           method: 'POST',
           body: formData,
         });
